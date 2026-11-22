@@ -1,0 +1,14 @@
+--- a/model/graph_transformer.py
++++ b/model/graph_transformer.py
+@@ -80,8 +80,9 @@
+             nn.init.xavier_uniform_(self.cls_token)
+         
+         #anatomy adjacency matrix
+-        adj_mat_file = '/home/ssd_scratch/users/arihanth.srikar/physionet.org/files/chest-imagenome/1.0.0/silver_dataset/anatomy_matrix.csv'
+-        adj_mat = torch.from_numpy(pd.read_csv(adj_mat_file, sep='\t').to_numpy()).int()
++        adj_mat_file = config.get('adj_mat_file')
++        adj_mat = (torch.from_numpy(pd.read_csv(adj_mat_file, sep='\t').to_numpy()).int() if adj_mat_file
++                   else torch.ones((num_nodes, num_nodes)).int())
+         N, M = adj_mat.shape
+         if config['is_global_feat']:
+             assert N == M, 'Adjacency matrix should be square'

@@ -1,0 +1,684 @@
+paths:
+  output_dir: /PATH/lateral-outputs
+  cohort_dir: /PATH/lateral-outputs/cohort
+  cohort_files_dir: /PATH/lateral-outputs/cohort/files
+  retrieval_dir: /PATH/lateral-outputs/retrieval
+  encoders_files_dir: /PATH/lateral-outputs/retrieval/files
+  trained_dir: /PATH/lateral-outputs/trained_encoder
+  trained_files_dir: /PATH/lateral-outputs/trained_encoder/files
+  controls_dir: /PATH/lateral-outputs/controls
+  transfer_dir: /PATH/lateral-outputs/transfer
+  downstream_dir: /PATH/lateral-outputs/downstream
+  published_dir: /PATH/lateral-outputs/published
+
+dry_run:
+  exams_per_group: null
+
+cohort:
+  max_frontal: 2
+  max_lateral: 2
+  frontal_order: [PA, AP, other]
+  frontal_rank_aliases: {frontal_assigned: other}
+  split_seed: 42
+  check_image_files: true
+  image_pass:
+    hash_view_classes: [frontal, lateral, unknown, unreadable]
+    embed_rules:
+      mimic: {view_class: [frontal, lateral], split: [train, valid]}
+      openi: {view_class: [unknown]}
+      rexgradient: {view_class: [unknown]}
+      brax: {view_class: [lateral]}
+    resize: 512
+    center_crop: 448
+    device: cuda
+    batch_size: 64
+    num_workers: 8
+    chunk_size: 5000
+  view_classifier:
+    train_corpus: mimic
+    train_split: train
+    eval_split: valid
+    C: 1.0
+    max_iter: 100
+    min_accuracy: 0.99
+    apply_to: [openi, rexgradient]
+    assigned_labels: {frontal: frontal_assigned, lateral: lateral_assigned}
+    lateral_threshold: 0.5
+    uncertain_band: [0.1, 0.9]
+  chexbert:
+    chunk_size: 20000
+    corpora: [mimic, chexpert, rexgradient, openi]
+  agreement_corpora: [mimic, chexpert]
+  chexpert_label_names:
+    Atelectasis: atelectasis
+    Cardiomegaly: cardiomegaly
+    Consolidation: consolidation
+    Edema: edema
+    Enlarged Cardiomediastinum: enlarged_cardiomediastinum
+    Fracture: fracture
+    Lung Lesion: lung_lesion
+    Lung Opacity: lung_opacity
+    No Finding: no_finding
+    Pleural Effusion: pleural_effusion
+    Pleural Other: pleural_other
+    Pneumonia: pneumonia
+    Pneumothorax: pneumothorax
+    Support Devices: support_devices
+  corpora: [mimic, chexpert, rexgradient, openi, padchest, brax, nih, vindr, taix]
+  dicom_age_units_per_year: {Y: 1, M: 12, W: 52.1775, D: 365.25}
+  query_seed: 42
+  duplicate_filter:
+    group_order: [train, valid, test_database, test_query]
+    folder: duplicate_filter
+    evidence_before: evidence_before_filter.csv
+  radgraph:
+    model_type: radgraph-xl
+    chunk_size: 500
+
+retrieval:
+  documented_corpora: [mimic, chexpert, rexgradient, openi]
+  classifier_train_corpora: [mimic, chexpert, rexgradient]
+  classifier_encoder: biovilt_frozen
+  context_max_tokens: 64
+  classifier:
+    C: 1.0
+    max_iter: 2000
+    n_jobs: 14
+  classifier_retriever: finding_classifier
+  evaluation:
+    hit_ks: [1, 5, 10]
+    ndcg_ks: [10, 50]
+    precision_k: 10
+    precision_threshold: 0.5
+    min_positive_queries: 20
+    empty_label_code: -2
+    n_jobs: 6
+  files:
+    core_findings: [atelectasis, cardiomegaly, consolidation, edema, pleural_effusion, pneumonia, pneumothorax]
+    core_name: core7
+    macro_name: macro
+    macro_metric: macro_ap
+    percent_scale: 100
+    fixed_columns: {configuration: none, backbone: none, seeds: none, query_inputs: all, std: 0, ci_low: 0,
+                    ci_high: 0, unit: percent}
+  embedding:
+    device: cuda
+    image_batch_size: 64
+    text_batch_size: 128
+    num_workers: 8
+    chunk_size: 20000
+  images:
+    size: 224
+    shard_size: 5000
+    workers: 32
+    pool_chunk: 16
+  encoders:
+    biovilt_frozen:
+      class: BioViLT
+      dim: 128
+      text_max_tokens: 512
+      resize: 512
+      center_crop: 448
+      hub:
+        - {repo: microsoft/BiomedVLP-BioViL-T, revision: 692f09e9be1bfe5fdd5f3efdd0e1eca7d2c10b23,
+           files: [config.json, configuration_cxrbert.py, modeling_cxrbert.py, pytorch_model.bin,
+                   special_tokens_map.json, tokenizer_config.json, vocab.txt]}
+    raddino_frozen:
+      class: RadDino
+      dim: 768
+      hub:
+        - {repo: microsoft/rad-dino, revision: 110cbc18d5133582e320b43d53bf5c44e410c936,
+           files: [config.json, model.safetensors, preprocessor_config.json]}
+    biomedclip_frozen:
+      class: BiomedCLIP
+      dim: 512
+      text_max_tokens: 256
+      hub:
+        - {repo: microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224,
+           revision: 9f341de24bfb00180f1b847274256e9b65a3a32e,
+           files: [open_clip_config.json, open_clip_pytorch_model.bin, special_tokens_map.json, tokenizer.json,
+                   tokenizer_config.json, vocab.txt]}
+        - {repo: microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract, revision: d673b8835373c6fa116d6d8006b33d48734e305d,
+           files: [config.json]}
+    medsiglip_frozen:
+      class: MedSigLIP
+      dim: 1152
+      text_max_tokens: 64
+      hub:
+        - {repo: google/medsiglip-448, revision: 9cea28a1a1195f665105faa6e8544c112fd960a4,
+           files: [config.json, model.safetensors, preprocessor_config.json, special_tokens_map.json, spiece.model,
+                   tokenizer.json, tokenizer_config.json]}
+    cxrclip_frozen:
+      class: CXRClip
+      dim: 512
+      text_max_tokens: 256
+      transform_split: test
+      hub:
+        - {repo: emilyalsentzer/Bio_ClinicalBERT, revision: d5892b39a4adaed74b92212a44081509db72f87b,
+           files: [config.json, pytorch_model.bin, vocab.txt]}
+      git:
+        - {url: "https://github.com/kakaobrain/cxr-clip", commit: 31188857cc5e892c22c731b176080eb5d4484cf2,
+           dir: /PATH/Datasets/_tools/cxr-clip}
+      checkpoints:
+        - {url: "https://twg.kakaocdn.net/brainrepo/models/cxr-clip/de4b5e4ae2047c1fb7960ddcd8d861cb/r50_mcc.tar",
+           path: /PATH/Datasets/_tools/cxr-clip-ckpt/r50_mcc.tar,
+           sha256: a4176daa256d47a4ca2fbbd3dff91e9e0564e8cba8846485ee3cdb3058ba46ad}
+        - {url: "https://download.pytorch.org/models/resnet50-0676ba61.pth",
+           path: /PATH/.cache/torch/hub/checkpoints/resnet50-0676ba61.pth,
+           sha256: 0676ba61b6795bbe1773cffd859882e5e297624d384b6993f7c9e683e722fb8a}
+    medimageinsight_frozen:
+      class: MedImageInsight
+      dim: 1024
+      model_subdir: "2024.09.27"
+      vision_model: medimageinsigt-v1.0.0.pt
+      hub:
+        - {repo: lion-ai/MedImageInsights, revision: 8b332dbcc542ca6b84b955269e547533960ab197,
+           files: ["2024.09.27/*", "MedImageInsight/*", medimageinsightmodel.py, pyproject.toml, requirements.txt]}
+
+trained_encoder:
+  train_corpora: [mimic, chexpert, rexgradient]
+  fit_splits: [train, valid]
+  slot_positions: {frontal: [0, 1], lateral: [2, 3]}
+  slot_images:
+    folder: images_224_slots
+  text_encoder: biovilt_frozen
+  report_max_tokens: 256
+  text_device: cpu
+  texts:
+    training_reports: {exams: fit_exams, splits: [train, valid], field: label_text,
+                       max_tokens: trained_encoder.report_max_tokens}
+    context_valid: {exams: has_context_text, splits: [valid], field: context_text,
+                    max_tokens: retrieval.context_max_tokens}
+  view_keys: {PA: PA, AP: AP, other: other, frontal_assigned: other, lateral: lateral, lateral_assigned: lateral}
+  empty_slot_view: other
+  sex_keys: {F: F, M: M, "": unknown}
+  input_configurations:
+    full: {}
+    frontal_copy: {copy_first_frontal_to: 2, empty_slots: [3]}
+    shuffled_context: {context_from_donor: true}
+    shuffled_lateral: {lateral_from_donor: true}
+    no_dropout: {}
+    alignment_only: {}
+    profile_only: {}
+    context_text_only: {unknown_age_sex: true}
+    context_agesex_only: {drop_text: true}
+    midlevel_fusion: {empty_slots: [1, 3]}
+    loso_without_mimic: {}
+    loso_without_chexpert: {}
+    loso_without_rexgradient: {}
+  query_inputs:
+    all: {}
+    no_lateral: {empty_slots: [2, 3]}
+    no_context: {drop_context: true}
+  context_permutation: {seed: 1234, folder: context_permutations}
+  lora: {rank: 4, alpha: 8, dropout: 0.0}
+  backbones:
+    biovilt:
+      class: BioViLTBackbone
+      input_size: 224
+      image_dim: 2048
+      tokens: 49
+      lora_modules: {pattern: '^layer[34]\.', types: [Conv2d, Linear]}
+    raddino:
+      class: RadDinoBackbone
+      weights_from: raddino_frozen
+      input_size: 224
+      image_dim: 768
+      tokens: 256
+      lora_modules: {pattern: '\.attention\.attention\.(query|value)$', types: [Linear]}
+  training_report_file: training_reports
+  context_files: [context, context_valid]
+  encoder: {text_dim: 128, width: 256, depth: 4, heads: 8, align_dim: 128, ff: 1024, drop: 0.1}
+  training:
+    dropout_probs: {lateral: 0.5, second_image: 0.5, text: 0.3, age: 0.3, sex: 0.3}
+    learning_rate: 1.0e-4
+    weight_decay: 0.01
+    grad_clip_norm: 1.0
+    batch_size: 64
+    mixed_precision: bfloat16
+    max_epochs: 15
+    patience: 3
+    temperature: 0.07
+    folder: runs
+    num_workers: 16
+    device: cuda
+    time_budget_hours: 7.5
+  runs:
+    seeds: [42, 1337, 2024]
+    configurations:
+      biovilt: [full, frontal_copy, shuffled_context]
+      raddino: [full, frontal_copy]
+  test_outputs:
+    folder: test_outputs
+    batch_size: 128
+    num_workers: 16
+    device: cuda
+    reuse_outputs: {no_lateral: all}
+  test_query_inputs:
+    full: [all, no_lateral, no_context]
+    frontal_copy: [all]
+    shuffled_context: [all]
+    shuffled_lateral: [all]
+    no_dropout: [all]
+    alignment_only: [all]
+    profile_only: [all]
+    context_text_only: [all]
+    context_agesex_only: [all]
+    midlevel_fusion: [all]
+    loso_without_mimic: [all]
+    loso_without_chexpert: [all]
+    loso_without_rexgradient: [all]
+  retrieval: {evidence_folder: evidence, two_stage_k: 50, documented_report_encoder: biovilt_frozen, n_jobs: 3}
+  files:
+    seeds_separator: ";"
+    per_seed_rows:
+      - {level: finding, finding: macro, metric: macro_ap}
+      - {level: report, finding: pooled, metric: ndcg10}
+    fixed_columns: {retriever: encoder, std: 0, ci_low: 0, ci_high: 0, unit: percent}
+    skipped_runs: []
+
+transfer:
+  runs:
+    seeds: [42]
+    configurations:
+      biovilt: [loso_without_mimic, loso_without_chexpert, loso_without_rexgradient]
+  evaluation:
+    test_corpora: [mimic, chexpert, rexgradient, openi, padchest, brax, nih, vindr, taix]
+    rules: [profile, alignment, two_stage]
+    evidence_folder: evidence
+  files: {folder: files}
+
+downstream:
+  encoder_runs: [biovilt__full__42, biovilt__full__1337, biovilt__full__2024]
+  encoder_retriever: encoder
+  query_inputs: all
+  test_corpora: [mimic, chexpert, rexgradient, openi, padchest, brax, nih, vindr, taix]
+  tasks:
+    knn10: {neighbors: 10, mean: true, archives: [documented, undocumented], metric: auroc}
+    top1_report: {neighbors: 1, mean: false, archives: [documented], metric: f1}
+  evidence_folder: evidence
+  n_jobs: 3
+  files: {folder: files, min_positive: 1, min_negative: 1, macro_name: macro,
+          micro_name: micro}
+
+published:
+  source:
+    url: https://github.com/cvit-mip/chextriev
+    commit: 2fa85e293a9a79127101edc26c0f5874f226efcf
+    checkout: /PATH/Datasets/_tools/chextriev-2fa85e2
+    dataloader: dataloader/anaxnet.py
+    lists: {regions: anatomy_names, findings: nine_class_labels}
+  scene_graphs: /PATH/Datasets/Chest-ImaGenome/silver_dataset/scene_graph.zip
+  images_to_avoid: /PATH/Datasets/Chest-ImaGenome/silver_dataset/splits/images_to_avoid.csv
+  views: [PA, AP]
+  regions: [right lung, right apical zone, right upper lung zone, right mid lung zone, right lower lung zone,
+            right hilar structures, right costophrenic angle, left lung, left apical zone, left upper lung zone,
+            left mid lung zone, left lower lung zone, left hilar structures, left costophrenic angle, mediastinum,
+            upper mediastinum, cardiac silhouette, trachea]
+  findings: [lung opacity, pleural effusion, atelectasis, enlarged cardiac silhouette, pulmonary edema/hazy opacity,
+             pneumothorax, consolidation, fluid overload/heart failure, pneumonia]
+  reference_counts: {train: 226473, valid: 1863, test: 3191}
+  population: {folder: population, workers: 24, graphs_per_task: 500}
+  originals:
+    release: MIMIC-CXR-JPG 2.1.0
+    root: /PATH/Datasets/MIMIC-CXR-JPG-originals
+    checksums: SHA256SUMS.txt
+    expected_jpgs: 377110
+    unavailable:
+      list: /PATH/Datasets/MIMIC-CXR-JPG-originals/unavailable_originals.txt
+      cause: "original file unavailable: HTTP 404 from PhysioNet, although listed in SHA256SUMS.txt"
+  crops:
+    chunks: [[test, valid], [train]]
+    chunk_size: 20000
+    folder: crops
+    resize: [224, 224]
+    antialias: true
+    members: {region: "{image_id}/{region:02d}.png", image: "{image_id}/image.png"}
+    workers: 24
+    images_per_task: 50
+    chunks_per_job: 2
+  frontal: {split: test, folder: frontal_images}
+  encoder_frontal:
+    runs: [biovilt__full__42, biovilt__full__1337, biovilt__full__2024]
+    operations: {empty_slots: [1, 2, 3], drop_context: true}
+    folder: encoder_frontal
+  files:
+    folder: files
+    unit: percent
+    macro_name: macro
+    weighted_name: weighted
+    zero_hit_metric: hr5
+    method_order: [chextriev_rerun, encoder_frontal, finding_classifier]
+    rule_order: [image_image, alignment, profile]
+  chextriev:
+    folder: chextriev
+    embeddings_folder: chextriev/embeddings
+    seed: 42
+    torch_home: /PATH/Datasets/_tools/torch_home
+    weights: {file: resnet50-11ad3fa6.pth, sha256: 11ad3fa62ca79e40addfd354a8ec4b7c75143b3038b8d2a807fbc68deab379ca}
+    adaptation: published/chextriev_adaptation.patch
+    excluded_source_folders: [data, cached_results, output]
+    devices: 1
+    microbatch: 16
+    effective_batch: 256
+    num_workers: 20
+    time_budget_hours: 7.5
+    accelerator: gpu
+    limit_images: null
+    model:
+      emb_dim: 1024
+      edge_dim: 32
+      num_classes: 9
+      lr: 0.0001
+      epochs: 30
+      dropout: 0.0
+      num_layers: 2
+      edge_index: 128
+      graph_importance: 1.0
+      is_global_feat: null
+      concat_global_feature: null
+      matryoshka: null
+      contrastive: null
+      hash_bits: 64
+      pool: attn
+      minimalistic: null
+      prune: null
+      fully_connected: true
+      abs_pos: true
+      rel_pos: null
+      lr_scheduler: plateau
+      image_featuriser: resnet
+      cls: null
+      multiscale: null
+      accept_edges: true
+      residual_type: 2
+      num_nodes: 18
+      task: graph_transformer
+      entity: arihanth
+      project: mimic-cxr
+      run: best_config_abs_pos_with_edges
+      set_precision: null
+      log: null
+      compile: null
+      validate_every: 1000
+      validate_for: 200
+      adj_mat_file: null
+  retrieval:
+    folder: evidence
+    k: 5
+    protocol: published_all
+    test_corpus: mimic
+    archive: undocumented
+    rule: image_image
+    query_inputs: frontal_only
+    level: finding
+    metrics: {ap5: ap, hr5: hr, rr5: rr}
+    methods:
+      encoder_frontal: {folder: published.encoder_frontal.folder, key: alignment,
+                        files: {42: biovilt__full__42, 1337: biovilt__full__1337, 2024: biovilt__full__2024}}
+      chextriev_rerun: {folder: published.chextriev.embeddings_folder, key: embedding, files: {42: chextriev_rerun__42}}
+  study_common:
+    folder: study_common
+    methods:
+      encoder_frontal: {rule: alignment, query_inputs: frontal_only, folder: published.encoder_frontal.folder,
+                        key: alignment,
+                        files: {42: biovilt__full__42, 1337: biovilt__full__1337, 2024: biovilt__full__2024}}
+      finding_classifier: {rule: profile, query_inputs: all}
+      chextriev_rerun: {rule: image_image, query_inputs: frontal_only, folder: published.chextriev.embeddings_folder,
+                        key: embedding, files: {42: chextriev_rerun__42}}
+
+controls:
+  runs:
+    seeds: [42]
+    configurations:
+      biovilt: [shuffled_lateral, no_dropout, alignment_only, profile_only, context_text_only, context_agesex_only,
+                midlevel_fusion]
+  configuration_training:
+    no_dropout: {dropout_probs: null}
+    alignment_only: {loss_terms: [alignment]}
+    profile_only: {loss_terms: [profile]}
+    loso_without_mimic: {train_corpora: [chexpert, rexgradient]}
+    loso_without_chexpert: {train_corpora: [mimic, rexgradient]}
+    loso_without_rexgradient: {train_corpora: [mimic, chexpert]}
+  configuration_models:
+    midlevel_fusion: fusion
+  fusion:
+    midlevel: {channels: 1024, heads: 8, dropout: 0.1}
+    heads: {image_dim: 2048, text_dim: 128, width: 256}
+    stage3_map: [1024, 14, 14]
+  lateral_permutation: {seed: 1234, folder: lateral_permutations}
+  report_permutation: {seed: 1234, folder: report_permutations}
+  validation:
+    folder: validation
+    split_seed: 42
+    query_fraction: 0.2
+    query_inputs: all
+    weight_runs: [biovilt__full__42, biovilt__full__1337, biovilt__full__2024]
+    reports_folder: reports
+    evidence_folder: evidence
+    archive: documented
+    depths: [10, 20, 50, 100, 200]
+    ndcg_metric: ndcg10
+    depth_file: selected_depth.json
+  replacement_heads:
+    features_folder: head_features
+    folder: heads
+    configurations:
+      alignment_only: {features: alignment, fit: logistic_regression}
+      profile_only: {features: norm, fit: least_squares}
+    logistic_regression: {C: 1.0, max_iter: 2000}
+  shuffled_report:
+    configuration: shuffled_report
+    weight_runs: [biovilt__full__42, biovilt__full__1337, biovilt__full__2024]
+    archives: [documented]
+    query_inputs: all
+  retrieval:
+    evidence_folder: evidence
+    reevaluated_rules: [two_stage]
+    n_jobs: 3
+  files:
+    folder: files
+    retriever: encoder
+    unit: percent
+    bootstrap: {resamples: 1000, seed: 0, ddof: 1, percentiles: [2.5, 97.5], decimals: 1}
+    per_seed_rows:
+      - {level: finding, finding: macro, metric: macro_ap}
+      - {level: report, finding: pooled, metric: ndcg10}
+
+provenance:
+  digest_workers: 16
+
+tools:
+  biovil_t:
+    weights_dir: /PATH/Datasets/_tools/biovil_t
+  chexbert:
+    repo_src: /PATH/Datasets/_tools/CheXbert/src
+    checkpoint: /PATH/Datasets/_tools/chexbert_ckpt/chexbert.pth
+    checkpoint_sha256: 6550703c92d640e1e04d8105a7a185d76ece0f25fcbf033d292785bf22c0fde1
+
+corpora:
+  mimic:
+    split_source: release
+    metadata: /PATH/Datasets/MIMIC-CXR-JPG/meta/mimic-cxr-2.0.0-metadata.csv.gz
+    split: /PATH/Datasets/MIMIC-CXR-JPG/meta/mimic-cxr-2.0.0-split.csv.gz
+    reports_zip: /PATH/CXR/data/mimic/mimic-cxr-reports.zip
+    shipped_labels: /PATH/Datasets/MIMIC-CXR-JPG/meta/mimic-cxr-2.0.0-chexpert.csv.gz
+    images_dir: /PATH/CXR/data/mimic/images/preprocessed
+    split_map: {train: train, validate: valid, test: test}
+    view_map:
+      PA: [frontal, PA]
+      AP: [frontal, AP]
+      LATERAL: [lateral, lateral]
+      LL: [lateral, lateral]
+    label_sections: [FINDINGS, IMPRESSION]
+    context_sections: [INDICATION, HISTORY, REASON FOR EXAM, REASON FOR EXAMINATION]
+
+  chexpert:
+    split_source: split_patients
+    metadata: /PATH/Datasets/CheXpert-Plus/meta/df_chexpert_plus_240401.csv
+    zips_dirs:
+      - /PATH/Datasets/CheXpert-Plus/parts
+      - /PATH/CheXpert-Plus/parts
+    zip_member_prefix: PNG/
+    redivis:
+      organization: aimi
+      dataset: chexpert_plus
+      version: v1_0
+      metadata_table: df_chexpert_plus_240401
+      labels_table: CheXpert Labels
+      images_table: aimi.chexpert_plus:5yyj:v1_0.png_compressed:wsd7
+      zips_download_dir: /PATH/CheXpert-Plus/parts
+    shipped_labels: /PATH/Datasets/CheXpert-Plus/meta/chexpert_labels/impression_fixed.json
+    unreadable_images:
+      - train/patient32368/study1/view1_frontal
+    side_map: {Frontal: frontal, Lateral: lateral}
+    frontal_projections: {PA: PA, AP: AP}
+    sex_map: {Female: F, Male: M}
+    label_fields: [section_findings, section_impression]
+    context_fields: [section_clinical_history, section_history]
+
+  rexgradient:
+    split_source: release
+    meta_dir: /PATH/Datasets/ReXGradient-160K/meta
+    images_dir: /PATH/Datasets/ReXGradient-160K/images
+    split_files: {train: train, valid: valid, test: test}
+    kept_modalities: [CR, DX, DR]
+    unknown_views: ["", UNKNOWN, N/A, "None"]
+    view_map:
+      PA: [frontal, PA]
+      POSTERO_ANTERIOR: [frontal, PA]
+      AP: [frontal, AP]
+      LATERAL: [lateral, lateral]
+      LL: [lateral, lateral]
+      LAT: [lateral, lateral]
+
+  openi:
+    split_source: split_patients
+    reports_dir: /PATH/Datasets/Open-I/reports/ecgen-radiology
+    images_dir: /PATH/Datasets/Open-I/images
+    label_sections: [FINDINGS, IMPRESSION]
+
+  padchest:
+    split_source: split_patients
+    labels_csv: /PATH/Datasets/PadChest/PADCHEST_chest_x_ray_images_labels_160K_01.02.19.csv.gz
+    images_dir: /PATH/CXR/data/padchest/images
+    view_map:
+      PA: [frontal, PA]
+      AP: [frontal, AP]
+      AP_horizontal: [frontal, AP]
+      L: [lateral, lateral]
+    label_map:
+      atelectasis: atelectasis
+      cardiomegaly: cardiomegaly
+      consolidation: consolidation
+      pneumonia: pneumonia
+      pneumothorax: pneumothorax
+      pleural effusion: pleural_effusion
+      pulmonary edema: edema
+      nodule: lung_lesion
+      mass: lung_lesion
+      pleural thickening: pleural_other
+      pacemaker: support_devices
+      normal: no_finding
+
+  brax:
+    split_source: split_patients
+    spreadsheet: /PATH/Datasets/BRAX/master_spreadsheet_update.csv
+    images_dir: /PATH/Datasets/BRAX
+    view_map:
+      PA: [frontal, PA]
+      AP: [frontal, AP]
+      L: [lateral, lateral]
+      LL: [lateral, lateral]
+      RL: [lateral, lateral]
+    age_map: {85 or more: "85"}
+
+  nih:
+    split_source: release
+    data_entry: /PATH/Datasets/NIH-ChestX-ray14/meta/Data_Entry_2017_v2020.csv
+    test_list: /PATH/Datasets/NIH-ChestX-ray14/meta/test_list.txt
+    images_dir: /PATH/Datasets/NIH-ChestX-ray14/images
+    view_map:
+      PA: [frontal, PA]
+      AP: [frontal, AP]
+    label_map:
+      Atelectasis: atelectasis
+      Cardiomegaly: cardiomegaly
+      Consolidation: consolidation
+      Edema: edema
+      Effusion: pleural_effusion
+      Mass: lung_lesion
+      Nodule: lung_lesion
+      Pleural_Thickening: pleural_other
+      Pneumonia: pneumonia
+      Pneumothorax: pneumothorax
+      No Finding: no_finding
+
+  vindr:
+    split_source: release
+    annotations_dir: /PATH/Datasets/VinDr-CXR/annotations
+    images_zip: /PATH/Datasets/VinDr-CXR-preprocessed/preprocessed_vindr.zip
+    zip_member_prefix: preprocessed/
+    release_headers:
+      url: https://physionet.org/files/vindr-cxr/1.0.0/
+      file_list: /PATH/Datasets/VinDr-CXR/SHA256SUMS.txt
+      user_agent: Wget/1.21.4
+      header_bytes: 4096
+      chunk_size: 1000
+      pause_seconds: 0.2
+      timeout_seconds: 60
+      retry_statuses: [429, 500, 502, 503, 504]
+      retries: 20
+      retry_wait_seconds: 120
+    view_label: PA
+    train_min_votes: 2
+    label_map:
+      Cardiomegaly: cardiomegaly
+      Pleural effusion: pleural_effusion
+      Pneumonia: pneumonia
+      Atelectasis: atelectasis
+      Consolidation: consolidation
+      Pneumothorax: pneumothorax
+      Edema: edema
+      Pleural thickening: pleural_other
+      Nodule/Mass: lung_lesion
+      Rib fracture: fracture
+      Clavicle fracture: fracture
+      Lung Opacity: lung_opacity
+      No finding: no_finding
+
+  taix:
+    split_source: release
+    hf_repo: TLAIM/TAIX-Ray
+    hf_revision: 7f43720e2c7ab6400608880c0cb8b950ac0e5afb
+    parquet_dir: /PATH/Datasets/TAIX-Ray/data
+    keep_parquet: false
+    export_batch_size: 256
+    annotation: /PATH/Datasets/TAIX-Ray/metadata/annotation.csv
+    export_dir: /PATH/Datasets/TAIX-Ray/metadata/export
+    images_dir: /PATH/Datasets/TAIX-Ray/images
+    split_map: {train: train, val: valid, test: test}
+    view_label: AP
+    age_days_per_year: 365.25
+    binarize:
+      cardiomegaly: {columns: [HeartSize], positive_grades: [2, 3]}
+      pleural_effusion: {columns: [PleuralEffusion_Right, PleuralEffusion_Left], positive_grades: [3, 4]}
+      lung_opacity: {columns: [PulmonaryOpacities_Right, PulmonaryOpacities_Left], positive_grades: [3, 4]}
+      atelectasis: {columns: [Atelectasis_Right, Atelectasis_Left], positive_grades: [3, 4]}
+      edema: {columns: [PulmonaryCongestion], positive_grades: [3, 4]}
+
+statistics:
+  inputs:
+    encoders_per_query: /PATH/lateral-outputs/retrieval/files/encoders__evidence.csv.gz
+    model_per_query: /PATH/lateral-outputs/trained_encoder/files/model__evidence.csv.gz
+    controls_per_query: /PATH/lateral-outputs/controls/files/controls__evidence.csv.gz
+    transfer_per_query: /PATH/lateral-outputs/transfer/files/transfer__evidence.csv.gz
+    downstream_per_query: /PATH/lateral-outputs/downstream/files/downstream__evidence.csv.gz
+    published_per_query: /PATH/lateral-outputs/published/files/published__evidence.csv.gz
+    retrieval_metrics: /PATH/lateral-outputs/statistics/retrieval_metrics.csv
+    published: /PATH/lateral-outputs/published/files/published__result.csv
+    downstream: /PATH/lateral-outputs/downstream/files/downstream__result.csv
+    characteristics: /PATH/lateral-outputs/cohort/files/cohort__result.csv
+    cohort: /PATH/lateral-outputs/cohort/files/cohort__evidence.csv
+  database: /PATH/lateral-outputs/statistics/evidence.duckdb
+  output_prefix: /PATH/lateral-outputs/statistics/lateral

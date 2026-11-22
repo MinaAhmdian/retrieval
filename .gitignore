@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+.vscode/
+.idea/
+*.csv
+*.csv.gz
+*.log
+*.pt
+*.npy
+*.npz
+*.zip
+*.png
+*.jpg
