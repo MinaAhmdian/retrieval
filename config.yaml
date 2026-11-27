@@ -10,6 +10,8 @@ paths:
   transfer_dir: /PATH/lateral-outputs/transfer
   downstream_dir: /PATH/lateral-outputs/downstream
   published_dir: /PATH/lateral-outputs/published
+  rerank_dir: /PATH/lateral-outputs/rerank
+  depth_dir: /PATH/lateral-outputs/depth
 
 dry_run:
   exams_per_group: null
@@ -484,6 +486,42 @@ controls:
     per_seed_rows:
       - {level: finding, finding: macro, metric: macro_ap}
       - {level: report, finding: pooled, metric: ndcg10}
+
+rerank:
+  test_corpora: [mimic, chexpert, rexgradient, openi]
+  archives: [documented, undocumented]
+  query_inputs: all
+  encoder_runs: [biovilt__full__42, biovilt__full__1337, biovilt__full__2024]
+  metrics: [ap, hit10, ndcg10, ndcg50, p10_f1_05, share10]
+  share: {name: share10, k: 10, excluded: [no_finding], min_queries: 20, macro_metric: macro_share10}
+  selection_metrics: [macro_ap, ndcg10, macro_share10]
+  evidence_folder: evidence
+  n_jobs: 3
+  files:
+    folder: files
+    per_seed_rows:
+      - {level: finding, finding: macro, metric: macro_ap}
+      - {level: report, finding: pooled, metric: ndcg10}
+      - {level: finding, finding: macro, metric: macro_share10}
+  tests: {family: rerank, simultaneous_metrics: [ndcg10]}
+
+depth:
+  test_corpora: [mimic, chexpert, rexgradient, openi]
+  archives: [documented]
+  query_inputs: all
+  encoder_runs: [biovilt__full__42, biovilt__full__1337, biovilt__full__2024]
+  ks: [10, 20, 50, 100, 200]
+  reranker_metric: ndcg10
+  metrics: [ap, hit10, ndcg10, ndcg50, p10_f1_05, share10]
+  share: {name: share10, k: 10, excluded: [no_finding], min_queries: 20, macro_metric: macro_share10}
+  evidence_folder: evidence
+  n_jobs: 3
+  files:
+    folder: files
+    per_seed_rows:
+      - {level: finding, finding: macro, metric: macro_ap}
+      - {level: report, finding: pooled, metric: ndcg10}
+      - {level: finding, finding: macro, metric: macro_share10}
 
 provenance:
   digest_workers: 16
